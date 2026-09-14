@@ -1,8 +1,4 @@
 # AWS Cloud Practitioner Essentials — Compute
-
-> Reformatted study notes. Blocks marked **📌 Correction / Clarification** fix or sharpen
-> something from the raw notes; **💡** blocks are added explanation and exam tips.
-
 ---
 
 ## 1. Amazon EC2 (Elastic Compute Cloud)
