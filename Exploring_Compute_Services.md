@@ -1,12 +1,5 @@
 # Module 3: Exploring Compute Services
 
-> Reformatted and expanded study notes.
-> **🧒 ELI5** = the "explain it to a kid" version. **🏢 Real example** = a concrete scenario.
-> **💡** = added context / exam tip. **📌** = a correction or sharpened definition.
-> Companion file: `compute.md` (EC2, AMIs, pricing, Auto Scaling, ELB).
-
----
-
 ## Table of contents
 
 1. [Unmanaged vs. Managed vs. Fully Managed](#1-unmanaged-vs-managed-vs-fully-managed)
