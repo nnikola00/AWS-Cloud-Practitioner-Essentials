@@ -1,9 +1,6 @@
 # AWS Cloud Practitioner Essentials — Compute
----
 
 ## 1. Amazon EC2 (Elastic Compute Cloud)
-
-**📌 Correction:** EC2 = **E**lastic **C**ompute **C**loud (not "Elastic Cloud Compute").
 
 Virtual machines in the cloud. You pick the OS (Linux, Windows, macOS), the CPU/memory
 size, the storage, and the network placement — then AWS hands you a running server in
