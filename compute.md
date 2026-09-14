@@ -389,17 +389,3 @@ queue. You get both broadcast *and* durable buffering.
   instance IPs.
 - **Loose coupling** (SQS / SNS / EventBridge) is what turns a fragile monolith into a
   resilient system.
-
----
-
-## 13. Still to Come in the Compute Module
-
-Your notes stop at SNS. The Compute domain also covers, and the exam will ask about:
-
-- **AWS Lambda** — serverless functions; no servers to manage, pay per request and
-  duration, event-triggered.
-- **Containers** — **Amazon ECS** and **Amazon EKS** (Kubernetes) for orchestration,
-  **AWS Fargate** as the serverless compute engine underneath either one, and **Amazon ECR**
-  for image storage.
-- **Choosing between them** — EC2 (full control, you patch the OS) vs. containers
-  (portable, dense) vs. Lambda (no infrastructure, but a 15-minute max execution time).
