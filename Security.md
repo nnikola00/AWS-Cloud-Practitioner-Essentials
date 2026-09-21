@@ -1,0 +1,791 @@
+# Module 8: Security
+
+> Reformatted and expanded study notes.
+> **🧒 ELI5** = the "explain it to a kid" version. **🏢 Real example** = a concrete scenario.
+> **💡** = added context / exam tip. **📌** = a correction or sharpened definition.
+> **🛡️ In practice** = how this looks from a SOC seat, where the courseware and the real job differ.
+> Companion files: `compute.md`, `Exploring_Compute_Services.md`, `Networking.md`,
+> `Storage.md`, `Databases.md`, `AI & Machine Learning.md`.
+
+---
+
+## Table of contents
+
+1. [Authentication vs. authorization](#1-authentication-vs-authorization)
+2. [The AWS Shared Responsibility Model](#2-the-aws-shared-responsibility-model)
+3. [Preventing unauthorized access: IAM](#3-preventing-unauthorized-access--iam)
+4. [**IAM roles — the long explanation**](#4-iam-roles--the-long-explanation) ← your question
+5. [Additional access management services](#5-additional-access-management-services)
+6. [Protecting networks and applications](#6-protecting-networks-and-applications)
+7. [Protecting data: encryption](#7-protecting-data--encryption)
+8. [Detecting and responding to incidents](#8-detecting-and-responding-to-security-incidents)
+9. [The four security jobs, side by side](#9-the-four-security-jobs-side-by-side)
+10. [Quick recap + exam traps](#10-quick-recap--common-exam-traps)
+
+---
+
+## 1. Authentication vs. authorization
+
+Two mechanisms that play a big role in **data privacy and system protection**.
+
+| | **Authentication** | **Authorization** |
+|---|---|---|
+| Question it answers | **"Who are you?"** | **"What are you allowed to do?"** |
+| Definition | Verifying the **identity** of a user or entity through **credentials** like a username and password | Granting **access rights and permissions** determining **which actions** they can perform |
+| Course's use case | An employee **logs in** to an employee portal | An employee can access **only their own** employee records inside the portal |
+| Happens | **First** | **Second** — only after identity is proven |
+
+```
+    ┌──────────┐   AUTHENTICATION      ┌──────────┐   AUTHORIZATION    ┌───────────────┐
+    │ Employee │ ──── username ──────► │  Portal  │ ──── check ──────► │ Their OWN     │
+    │          │      + password       │          │      permissions   │ records only  │
+    └──────────┘   "Prove who you are" └──────────┘  "Here's your part"└───────────────┘
+                                                                              ✗
+                                                                       everyone else's
+```
+
+### 🧒 ELI5 — the school trip
+
+**Authentication** is the teacher at the coach door checking your name against the list.
+*Are you actually Nikola?* Once she ticks you off, she knows who you are.
+
+**Authorization** is what you're allowed to do once you're on the coach. You can sit in your
+seat and open your own bag. You **cannot** drive the coach, and you cannot open somebody
+else's bag — even though you're definitely allowed to be on the coach.
+
+Being **let in** and being **allowed to do anything you like** are two completely different
+things. Systems get breached when people confuse them.
+
+💡 **Mnemonic:** **Auth**e**n**tication = **N**ame. **Auth**o**r**ization = **R**ights.
+
+---
+
+## 2. The AWS Shared Responsibility Model
+
+**Cloud security is a shared responsibility between customers and AWS.** The split is often
+summarized in four words:
+
+> **Customers are responsible for security *IN* the cloud.
+> AWS is responsible for security *OF* the cloud.**
+
+| | **Customer — security IN the cloud** | **AWS — security OF the cloud** |
+|---|---|---|
+| Principle | You **maintain complete control over your content**, so you secure **everything you create and manage** in AWS | AWS **operates, manages, and controls the components at all layers of the infrastructure** |
+| Responsibilities | • Managing the security of **data, systems, and applications**<br>• Deciding **what data and workloads** to store or run in AWS<br>• Determining **which AWS services** to use<br>• Controlling **who has access** to environments and resources | • The **foundational software** that powers AWS services<br>• The **virtualization layer**<br>• The **hardware and global infrastructure** supporting the data centers — including protection for **Regions, Availability Zones, and edge locations** |
+
+```
+    ┌─────────────────────────────────────────────────────────────┐
+    │  CUSTOMER — security IN the cloud                           │
+    │  ─────────────────────────────────────────────────────────  │
+    │  Your data  ·  Your applications  ·  IAM users & policies   │
+    │  OS patching (on EC2)  ·  Network config (SGs, NACLs)       │
+    │  Client-side & server-side encryption choices               │
+    ╞═════════════════════════════════════════════════════════════╡
+    │  AWS — security OF the cloud                                │
+    │  ─────────────────────────────────────────────────────────  │
+    │  Foundational software  ·  Virtualization layer (hypervisor)│
+    │  Hardware  ·  Data centers  ·  Regions, AZs, edge locations │
+    │  Physical security  ·  Power, cooling, network fabric       │
+    └─────────────────────────────────────────────────────────────┘
+```
+
+### 📌 The nuance the course leaves out: the line MOVES by service
+
+This is the thing people get wrong, and the exam does test it. **The more managed the
+service, the more AWS takes on:**
+
+| Service | AWS handles | You handle |
+|---|---|---|
+| **EC2** (unmanaged) | Hardware, hypervisor | **The guest OS, patching, firewall rules, the application, the data** |
+| **RDS** (managed) | Hardware, OS, **database engine patching** | Database users and permissions, network placement, the data |
+| **S3** (fully managed) | Hardware, OS, the entire storage service | **Bucket policies, access settings, encryption choices, the data** |
+| **Lambda** (serverless) | Everything up to and including the runtime | **Your function code, its IAM role, the data** |
+
+**The one constant, at every level: your data and who can reach it is always yours.** AWS
+never takes that over.
+
+### 🧒 ELI5 — the apartment building
+
+AWS is the **landlord**. You are the **tenant**.
+
+The landlord looks after **the building**: the foundations, the roof, the walls, the locks on
+the main entrance, the security guard in the lobby, the electricity, the fire alarms. That's
+security **of** the building.
+
+You look after **your apartment**. You decide whether to lock your own front door. You decide
+who gets a copy of your key. You decide whether to leave your diary open on the kitchen
+table. That's security **in** the building.
+
+If the roof leaks, that's the landlord's problem. **If you hand your key to a stranger, that
+is not the landlord's problem** — and no amount of lobby security saves you.
+
+🛡️ **In practice:** essentially every cloud breach you'll read about is a *tenant* failure,
+not a landlord failure — a public S3 bucket, an over-permissioned role, a leaked access key
+in a public repo. AWS's side of the line rarely fails. Yours is where the work is.
+
+### AWS security controls
+
+AWS offers multiple mechanisms to protect your cloud resources. They help you:
+
+1. **Prevent** security incidents through proper permission and access management
+2. **Protect** networks, applications, and data
+3. **Detect and respond** to security incidents as they occur
+
+💡 **That's not a random list — it's the structure of the rest of this module.** Sections 3–5
+are *prevent*, 6–7 are *protect*, 8 is *detect and respond*.
+
+---
+
+## 3. Preventing unauthorized access — IAM
+
+**AWS Identity and Access Management (IAM):** securely manage **identities and access** to
+AWS services and resources.
+
+**Two foundational rules:**
+
+> **1. By default, all actions are denied.** You must **explicitly grant permission** before
+> anyone can perform any action in your account.
+>
+> **2. The principle of least privilege:** give people and systems access to **what they need
+> and nothing else**.
+
+IAM provides **users, groups, and roles** so you can configure access to your operational and
+security needs. **IAM policies define the access** for these identities.
+
+### The five IAM concepts
+
+#### 1. AWS account root user
+
+Every AWS account gets a **root user** — the **account owner**, with permission to **do
+anything inside the account**. Because it's so powerful:
+
+- Associate a **strong password** with it
+- Turn on **multi-factor authentication (MFA)** — requiring **at least two verification
+  methods** to log in
+- **Create other IAM identities, such as IAM users, to handle daily tasks**
+
+💡 **Never use root for daily work.** A handful of tasks genuinely require it (closing the
+account, changing the account name or billing details, some support plan changes) — so the
+correct pattern is: secure it with MFA, write the credentials down somewhere safe, and then
+essentially never log in as root again.
+
+#### 2. IAM users
+
+An **IAM user** represents **a person or application** that interacts with AWS services and
+resources. It consists of **a name and credentials**.
+
+**AWS recommends creating individual IAM users for each person** who needs access, so everyone
+has their **own unique set of security credentials**.
+
+💡 **Why individual users matter:** shared accounts destroy accountability. If five people use
+one login and something is deleted at 3 a.m., the logs tell you *what* happened but never
+*who*. Individual identities are what make an audit trail meaningful.
+
+#### 3. IAM groups
+
+An **IAM group** is a **collection of IAM users**. **Assign permissions to a group and all
+users in it inherit those permissions.** Example: assign standard access to a group called
+`employees` so all your employees receive the same generic access.
+
+**🧒 ELI5:** instead of writing a permission slip for each of 30 children, you write **one
+slip for "Class 4B"** and every child in Class 4B is covered. A new pupil joins? Put them in
+Class 4B — done. Someone leaves the class? They lose those permissions automatically.
+
+#### 4. IAM roles
+
+→ **See §4 below — this one gets its own full section.**
+
+#### 5. IAM policies
+
+An **IAM policy** is a **JSON document that allows or denies permission** to access AWS
+services and resources, and can **define the level of access**. Example: allow employees to
+access **all** S3 buckets in your account, or **only a specific bucket**.
+
+A policy in the flesh — this is what the course means by "a JSON document":
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",                                  ← Allow or Deny
+      "Action": ["s3:GetObject", "s3:PutObject"],         ← WHAT they can do
+      "Resource": "arn:aws:s3:::company-reports/*"        ← WHICH resource
+    }
+  ]
+}
+```
+
+Read it as a sentence: *"**Allow** the action **read and write objects** on the resource
+**everything inside the `company-reports` bucket**."* Nothing else is permitted, because
+everything not explicitly allowed is denied.
+
+### 📌 How AWS decides: the evaluation order
+
+Worth knowing, because it explains almost every "why can't I access this?" ticket:
+
+```
+   1. Is there an explicit DENY anywhere?  ──── YES ──►  DENIED. Always. Full stop.
+                    │ no
+                    ▼
+   2. Is there an explicit ALLOW?          ──── YES ──►  ALLOWED
+                    │ no
+                    ▼
+   3. Neither?                             ─────────►    DENIED (implicit deny — the default)
+```
+
+**An explicit `Deny` always wins**, no matter how many `Allow`s exist elsewhere. That's the
+mechanism behind guardrails: you can hand a team broad permissions and still place an
+unconditional deny on, say, deleting audit logs.
+
+### 💡 Two facts the course doesn't state
+
+- **IAM is a global service** — users, groups, roles, and policies are not tied to a Region.
+  Compare that with EBS volumes (one AZ) and S3 buckets (one Region).
+- **MFA should not stop at root.** Any human with meaningful permissions should have it.
+  Credential theft is the single most common initial access vector; MFA is the control that
+  breaks it.
+
+---
+
+## 4. IAM roles — the long explanation
+
+> *Your note: "I need very good explanation here, can't quite understand." Fair — roles are
+> the one IAM concept that doesn't click from a one-line definition, because they're doing
+> something genuinely different from users and groups.*
+
+### The course's definition, unpacked
+
+> *"An IAM role is an identity you can **assume** to gain **temporary** access to permissions.
+> For example, an employee might need to work as a barista in the morning and a cashier in
+> the afternoon. When someone assumes an IAM role, they **abandon all previous permissions**
+> they had under a previous role and assume the permissions of the new role."*
+
+Three words carry all the weight: **assume**, **temporary**, and **abandon**.
+
+### Start with the problem roles exist to solve
+
+Forget the definition and consider a concrete situation.
+
+**You have an application on an EC2 instance that needs to read files from S3.**
+
+The obvious approach: create an IAM user for the app, generate an access key, and paste the
+key into the application's config file. **This is how it used to be done, and it is a
+disaster:**
+
+- The key sits **in a file on disk, forever**. It never expires.
+- It gets copied into the code repository. Someone pushes to GitHub. Bots scan public repos
+  for AWS keys **within seconds**.
+- It gets baked into the AMI, so all 50 instances launched from it share one key.
+- Rotating it means redeploying every application that uses it, so nobody ever rotates it.
+- When it does leak, the attacker has **permanent** credentials, and you have no idea which
+  copy leaked.
+
+**A role removes the key entirely.**
+
+You attach a role to the instance. When the application needs S3, AWS hands it **temporary
+credentials that expire in a few hours** and are **automatically refreshed**. There is no key
+in the config file. There is no key in the repo. There is nothing to leak that stays valid.
+
+**That's the point of roles: access without permanent credentials.**
+
+### The mental model: a role is a HAT, not a person
+
+This is the piece that makes it click.
+
+| | **IAM user** | **IAM role** |
+|---|---|---|
+| What it is | **A permanent identity** — one person or app | **A set of permissions waiting to be picked up** |
+| Analogy | **Your face.** You always have it | **A hat on a hook.** Anyone authorized can put it on |
+| Credentials | **Long-term** — a password or access key that doesn't expire | **Temporary** — issued on assumption, expire in minutes to hours |
+| Who "is" it | Exactly one person/app | **Nobody, until someone assumes it.** Then possibly many, at different times |
+| Belongs to | A person | **A job** |
+
+**A user is *who you are*. A role is *what you're currently doing*.**
+
+### 🧒 ELI5 — the coffee shop hats
+
+This is the barista/cashier example from your notes, told properly.
+
+You work in a coffee shop. There are two hats on hooks behind the counter.
+
+- The **barista hat** 🎩 lets you use the coffee machine and the milk fridge.
+- The **cashier hat** 👒 lets you open the till and handle money.
+
+In the morning you put on the **barista hat**. Now you can make coffee. **You cannot open the
+till** — not because you're untrustworthy, but because you're not wearing the till hat.
+
+At lunchtime you **take off the barista hat and put on the cashier hat**. Now you can open the
+till — and **you can no longer use the coffee machine**. You didn't *add* the cashier
+permissions to your barista permissions. You **swapped**. That's what your notes mean by
+*"they abandon all previous permissions."*
+
+Three things follow, and they're the whole concept:
+
+1. **The hat isn't yours.** It belongs to the *job*. Tomorrow a different colleague wears the
+   same barista hat.
+2. **You only wear it while you're doing that job.** At the end of the shift it goes back on
+   the hook. *(Temporary.)*
+3. **Wearing a hat isn't permission to grab any hat.** The manager decides who's allowed to
+   reach for which hat. *(That's the trust policy — see below.)*
+
+### The two policies every role has
+
+This trips everyone up, and the course doesn't mention it at all. **A role has two separate
+policies, answering two different questions:**
+
+| Policy | Question it answers | Plain English |
+|---|---|---|
+| **Trust policy** | ***Who is allowed to wear this hat?*** | "This role may be assumed by EC2 instances" / "by users in account 1234" / "by anyone logging in through our company SSO" |
+| **Permissions policy** | ***What can the wearer do while wearing it?*** | "Read objects from the `reports` bucket" |
+
+```
+              ┌──────────────────────────────────────────┐
+              │            IAM ROLE: "S3Reader"          │
+              ├──────────────────────────────────────────┤
+              │  TRUST POLICY                            │
+              │  "EC2 instances may assume this role"    │  ← WHO can put the hat on
+              ├──────────────────────────────────────────┤
+              │  PERMISSIONS POLICY                      │
+              │  "Allow s3:GetObject on reports/*"       │  ← WHAT the hat lets you do
+              └──────────────────────────────────────────┘
+```
+
+Both must pass. The right to *assume* a role and the right to *do things with it* are
+separate gates — which is exactly why roles are safer than handing out permissions directly.
+
+### What actually happens when a role is assumed
+
+```
+  1. The EC2 instance (or user, or service) says:
+         "I'd like to assume the S3Reader role."
+                    │
+                    ▼
+  2. AWS STS (Security Token Service) checks the TRUST POLICY:
+         "Are EC2 instances allowed to assume this role?"  →  yes
+                    │
+                    ▼
+  3. STS issues TEMPORARY credentials:
+         access key + secret + session token, valid for e.g. 1 hour
+                    │
+                    ▼
+  4. The application uses them. It can do exactly what the
+     PERMISSIONS POLICY allows, and nothing else.
+                    │
+                    ▼
+  5. They EXPIRE. The SDK silently requests fresh ones.
+     Nothing permanent was ever written to disk.
+```
+
+💡 **STS** is the service handing out the temporary credentials. You don't have to configure
+it; it's worth knowing the name because it shows up constantly in CloudTrail logs as
+`AssumeRole` events.
+
+### The four situations where you use a role
+
+This is what makes roles concrete — every real use is one of these:
+
+| # | Situation | What it looks like |
+|---|---|---|
+| **1** | **An AWS service needs to act on your behalf** | An **EC2 instance** reading S3. A **Lambda function** writing to DynamoDB. This is the most common use by far — the service gets a role, never a key |
+| **2** | **A human needs to temporarily elevate** | You work day to day with read-only permissions, then **assume an admin role** for the ten minutes you need it. Your dangerous permissions exist only while you're using them |
+| **3** | **Cross-account access** | A monitoring tool in the security account assumes a read-only role in **fifty other accounts**. No user, no key, in any of them |
+| **4** | **Federated / external identity** | Someone logs in with their **corporate credentials** (or an app uses a third-party identity provider) and is **mapped to a role**. They never get an AWS user at all — this is what IAM Identity Center does (§5) |
+
+**🏢 Real example of #3, which is how big organizations actually run:** a company has 200 AWS
+accounts. Nobody has an IAM user in any of them. Everyone logs in once through corporate SSO,
+picks which account and role they want (`ReadOnly`, `Developer`, `Admin`), and gets temporary
+credentials for that account for the next hour. Off-board the employee in the corporate
+directory and their access to all 200 accounts ends immediately — because there was never an
+AWS credential to go hunting for.
+
+### Roles vs. users vs. groups — the three-way summary
+
+```
+   USER   = a permanent identity        "Nikola"
+   GROUP  = a bundle of users           "the Security Analysts"
+   ROLE   = a temporary set of powers   "whoever is on incident duty right now"
+```
+
+- Add someone to a **group** and they **gain** permissions permanently (added to what they
+  already have).
+- Have someone assume a **role** and they **swap into** a different set of permissions,
+  temporarily.
+
+That swap-versus-add distinction is the exam's favourite way to test this.
+
+🛡️ **In practice:** when you investigate AWS activity, **`AssumeRole` in CloudTrail is where
+you look**. It tells you which identity picked up which hat, when, and from where. An
+assume-role from an unexpected source IP, or into a role that identity never normally uses,
+is a strong signal — the same shape as a Windows privilege-escalation event, just in cloud
+clothing.
+
+### ⚠️ The most common mistake
+
+Don't attach permissions to a role and then let *everyone* assume it. A role with a wide-open
+trust policy is worse than a user, because it's harder to attribute. **The trust policy is
+the security control** — the permissions policy is just the job description.
+
+---
+
+## 5. Additional access management services
+
+Services that help **enforce the principle of least privilege** across AWS environments,
+streamlining administration while strengthening security practices.
+
+| Service | What it does | Key term |
+|---|---|---|
+| **AWS IAM Identity Center** | **Centralizes identity and access management across AWS accounts and applications.** Can **connect to an existing identity source** and provide your workforce with **single sign-on** to all connected AWS services and accounts | **Federated identity management** — a system letting users access **multiple applications, services, or domains using a single set of credentials** |
+| **AWS Secrets Manager** | A secure way to **manage, rotate, and retrieve** database credentials, API keys, and other secrets **throughout their lifecycle** | **Secrets** — confidential information intended to be known only to specific individuals or groups: passwords, database credentials, API keys |
+| **AWS Systems Manager** | A **centralized view of nodes** across your organization's **accounts and Regions**, and **multi-cloud and hybrid** environments. Quickly access node information (ID, OS details) and **automate registry edits, user management, and security patching** | **Nodes** — connection points in a network, system, or structure |
+
+### 🧒 ELI5
+
+- **IAM Identity Center** is the **one school badge that opens every door** — the library, the
+  gym, the science block. Before, you carried a different key for each room and kept losing
+  them. Now there's one badge, and if you leave the school, the office deactivates that badge
+  once and every door closes at the same moment.
+- **Secrets Manager** is the **safe where the spare keys live.** Nobody writes the alarm code
+  on a sticky note under the keyboard. And the safe **changes the code automatically** every
+  month so an old, copied code is worthless.
+- **Systems Manager** is the **caretaker's clipboard** listing every room in every building —
+  what's in it, what state it's in — and letting the caretaker **fix all of them at once**
+  instead of walking to each door. ("Patch these 4,000 servers" becomes one action.)
+
+💡 **Secrets Manager's real value is the rotation.** Storing a password somewhere encrypted is
+the easy part; the reason credentials leak and stay dangerous is that nobody ever changes
+them. Automatic rotation means a stolen credential has a short shelf life.
+
+💡 **Exam contrast:** **Secrets Manager** = secrets with **automatic rotation** (databases,
+API keys). **Systems Manager Parameter Store** = general configuration values, cheaper, no
+built-in rotation. If a question stresses **rotation**, it's Secrets Manager.
+
+---
+
+## 6. Protecting networks and applications
+
+### The attacks
+
+| Attack | How it works |
+|---|---|
+| **DoS** (denial of service) | An attacker **floods a web application with excessive network traffic**. If the application becomes overloaded and can no longer respond, **legitimate customer requests are denied** |
+| **DDoS** (distributed denial of service) | The attacker uses **multiple infected computers — "zombie bots"** — to **unknowingly** send excessive traffic to the application |
+
+```
+    DoS                                  DDoS
+    ───                                  ────
+    attacker                             attacker
+       │                                    │ commands
+       │ flood                    ┌─────────┼─────────┐
+       ▼                          ▼         ▼         ▼
+    ┌────────┐                  bot       bot       bot     ...thousands
+    │  Your  │                    │         │         │      (infected machines,
+    │  app   │ ✗ real users       └────────┐│┌────────┘       owners unaware)
+    └────────┘   can't get in             ▼▼▼
+                                       ┌────────┐
+                                       │  Your  │  ✗ much harder to block:
+                                       │  app   │    the traffic comes from
+                                       └────────┘    everywhere at once
+```
+
+**💡 Why distributed is the hard part:** one attacking machine can be blocked by blocking one
+IP. Ten thousand machines across a hundred countries, each sending traffic that looks
+individually reasonable, cannot be filtered that way — which is why DDoS protection has to
+happen at massive scale, upstream of your application.
+
+### AWS protection through infrastructure
+
+**AWS automatically protects against low-level, brute-force attacks such as DDoS** through its
+**built-in infrastructure and network architecture** — spanning **multiple Regions,
+Availability Zones, and edge locations**, and **designed to make it difficult for attackers to
+overwhelm the system**.
+
+| Mechanism | How it protects you |
+|---|---|
+| **Security groups** | **Only allow in proper request traffic.** They operate at the **AWS network level**, so they can **shrug off massive attacks using the entire AWS Region's capacity** |
+| **Elastic Load Balancing (ELB)** | **Handles traffic first before handing it off**, so your **frontend server is not overwhelmed**. Like security groups, it **runs at the Region level** |
+| **AWS Regions** | Their **enormous capacity makes them extremely difficult to overwhelm** — it would be **massively expensive** to achieve |
+
+💡 **The insight here:** the filtering happens on **AWS's** infrastructure, not yours. A
+security group rejects unwanted traffic using AWS's Region-scale capacity, **before** it ever
+reaches your little `t3.micro`. Your instance never even sees the flood. *(This is the same
+security group from `Networking.md` — stateful, instance-level, allow rules only.)*
+
+### AWS protection through services
+
+#### AWS Shield — DDoS protection
+
+| Tier | What you get |
+|---|---|
+| **Shield Standard** | **Automatic**, at **no cost**, for **all AWS customers**. Protects against the **most common, frequently occurring** DDoS attacks, using **a variety of analysis techniques to detect and mitigate malicious network traffic in real time** |
+| **Shield Advanced** | **Paid**. **Detailed attack diagnostics** and the ability to **detect and mitigate sophisticated DDoS attacks**. Integrates with **CloudFront, Route 53, and ELB** |
+
+You can also **integrate Shield with AWS WAF by writing custom rules** to mitigate complex
+DDoS attacks.
+
+#### AWS WAF — web application firewall
+
+**Monitors network requests coming into your web applications.** When a request arrives, WAF
+**checks the IP address against a web access control list (web ACL)**. A request from a
+**blocked IP** is **denied**; **legitimate requests are allowed**.
+
+**📌 Worth knowing beyond the courseware:** the notes describe WAF as IP-based, which is the
+simplified version. Real WAF inspects the **content** of requests — blocking **SQL injection**
+and **cross-site scripting** attempts, applying **rate limits**, filtering by **geography**,
+and matching strings or regex anywhere in the request. Judging requests by IP alone would be
+close to useless against a modern attacker. Learn the courseware version for the exam, but
+don't carry the misconception into work.
+
+**📌 Don't confuse the two ACLs:** a **web ACL** belongs to **AWS WAF** and filters
+**application-layer (HTTP) requests**. A **network ACL** belongs to your **VPC** and filters
+**packets at the subnet boundary** (`Networking.md` §9). Similar name, different layer.
+
+### 🧒 ELI5 — the nightclub
+
+Your app is a nightclub.
+
+- **A DoS attack** is one very persistent person standing in the doorway so nobody else can
+  get in.
+- **A DDoS attack** is ten thousand people showing up at once — most of whom were *tricked*
+  into coming and don't know they're part of it.
+- **AWS Shield** is the fact that the club sits inside **an enormous stadium with a hundred
+  entrances**. Ten thousand people simply don't fill it. *(Shield Standard is free and always
+  on; Shield Advanced is the security firm who also tells you who organized it.)*
+- **AWS WAF** is the **bouncer with a list**, checking each person at the door. In the
+  courseware version, the list is of banned faces. In reality the bouncer also spots the
+  person trying to smuggle something in under their coat — which is the SQL injection.
+
+---
+
+## 7. Protecting data — encryption
+
+### Encryption basics
+
+Encryption works like a **lock and key mechanism**: with the right key you can access the
+data, otherwise you cannot. An **encryption key** turns the information into a **randomized
+set of characters**; a **decryption key** turns it back — **only when it's needed** by your
+application.
+
+### The two types
+
+| Type | Definition | Example | Mechanism |
+|---|---|---|---|
+| **Encryption at rest** | Data is **idle and not moving** | Stored in a database or an S3 bucket | Storage-level encryption, keys from KMS |
+| **Encryption in transit** | Data is **moving between locations** | Sent from a database to an application | **SSL/TLS certificates** establish encrypted network connections between systems |
+
+```
+       ┌────────────┐                                    ┌────────────┐
+       │  Database  │ ══════ IN TRANSIT ════════════════►│    App     │
+       │            │        (SSL/TLS)                   │            │
+       │ 🔒 AT REST │                                    │            │
+       └────────────┘                                    └────────────┘
+        encrypted while                                encrypted while
+        sitting still                                  travelling
+```
+
+**💡 You need both, and they protect against different attackers.** At rest protects against
+someone who gets hold of the **disk, the backup, or the snapshot**. In transit protects
+against someone **watching the network** in between. Encrypting only one leaves an open door.
+
+### 🧒 ELI5 — the diary and the armoured van
+
+**Encryption at rest** is writing your diary **in a secret code** and keeping it in a locked
+box under the bed. Even if a burglar takes the whole box, the pages are gibberish without the
+codebook.
+
+**Encryption in transit** is posting that diary in an **armoured van** instead of an open
+cart. Nobody along the road can peek in.
+
+A thief who steals the box gets nothing. A spy watching the road sees nothing. **You want
+both**, because they're two different thieves.
+
+### AWS built-in data protection
+
+Storage options with encryption already built in:
+
+| Service | Built-in protection |
+|---|---|
+| **Amazon S3** | **By default, all new S3 buckets have encryption configured**, and **all uploaded objects are encrypted at rest** |
+| **Amazon EBS** | Volumes and snapshots **can be encrypted at rest**, including **both boot and data volumes** of an EC2 instance |
+| **Amazon DynamoDB** | **Server-side encryption at rest is enabled on all table data**, using keys stored in **AWS KMS** |
+
+💡 Notice the difference in wording: S3 and DynamoDB are encrypted **by default**; EBS
+**can be** encrypted — historically it was opt-in per volume (you can now set an
+account-level default, but the exam follows the wording above).
+
+### AWS data protection services
+
+| Service | What it does |
+|---|---|
+| **AWS Key Management Service (KMS)** | **Create and manage cryptographic keys** used to encrypt and decrypt data. **Control the use of keys** across many services and your own applications — e.g. specify **which IAM users and roles can manage keys**. **Your keys never leave KMS**, and you can **temporarily disable** them so they can no longer be used |
+| **Amazon Macie** | **Monitor your sensitive data at rest.** Uses **ML and automation to discover sensitive data stored in Amazon S3**. Assess your **security posture** — especially helpful for **meeting compliance requirements** |
+| **AWS Certificate Manager (ACM)** | **Centralizes management of your SSL/TLS certificates** that provide **encryption in transit**. Protects various AWS services and **connected on-premises resources** |
+
+*A **cryptographic key** is a random string of digits used for locking (encrypting) and
+unlocking (decrypting) data.*
+
+**🧒 ELI5 of the three:**
+
+- **KMS** is the **keymaster**. All the keys to all the locks live in one guarded room. The
+  keymaster decides who may borrow which key — and **the keys never leave the room**; you send
+  the box *to* the keymaster to be locked or unlocked. Lose trust in someone? **Disable the
+  key**, and everything it locked becomes unopenable instantly.
+- **Macie** is the **sniffer dog that walks through the warehouse** looking for things that
+  shouldn't be lying around — a box of credit card numbers in an unlocked cupboard. It doesn't
+  lock anything; it **tells you what sensitive things you have and where**.
+- **ACM** is the **passport office for your website**. It issues and **automatically renews**
+  the certificates that prove your site is really your site — so nobody's browser sees the
+  scary warning, and nobody forgets a renewal at 2 a.m. on a Sunday.
+
+🛡️ **In practice:** Macie is the one that answers a question everybody dreads —
+*"do we have PII in S3, and where?"* Most organizations genuinely don't know, and that's the
+gap that turns a small misconfiguration into a reportable breach.
+
+---
+
+## 8. Detecting and responding to security incidents
+
+Preventing and protecting aren't enough; you must also **detect and respond to incidents that
+might occur**.
+
+| Service | What it does |
+|---|---|
+| **Amazon Inspector** | Improves security and compliance by running **automated security assessments** for **EC2 instances, containers, and Lambda functions**. Checks for **security vulnerabilities and deviations from best practices** — e.g. **open access to EC2 instances** and **installations of vulnerable software versions**. Assessments appear in the console as **findings prioritized by severity**, each with a **detailed description and a recommendation for how to fix it**; also retrievable **through an API** |
+| **Amazon GuardDuty** | **Intelligent threat detection** across your infrastructure and resources. Identifies threats by **continuously monitoring streams of account metadata and network activity**. Uses **known malicious IP addresses, anomaly detection, and machine learning** to identify threats accurately. **Findings include recommended remediation steps**, and you can configure **Lambda functions to remediate automatically** |
+| **Amazon Detective** | **After a threat has been detected**, investigate the **root cause**. Analyzes threats with **interactive visualizations** in a unified console view — **resource and user interactions over a configurable timeline**, with recommended remediation |
+| **AWS Security Hub** | Brings **multiple security services together into a single place and format**. See your **security and compliance state in one comprehensive view**. **Automatically aggregates findings** from AWS and partner services into actionable groupings called **insights**, and accelerates **time to resolution (TTR)** with **automated remediation** |
+
+### 📌 The four-way distinction — the most confusable set in the module
+
+They sound alike and all produce "findings." They answer **four different questions**:
+
+| Service | The question it answers | Timing | Analogy |
+|---|---|---|---|
+| **Inspector** | *"**Where are we weak?**"* — vulnerabilities and misconfigurations | **Before** an attack | The **health check-up** |
+| **GuardDuty** | *"**Is something bad happening right now?**"* — active threats | **During** | The **burglar alarm** |
+| **Detective** | *"**What exactly happened, and how?**"* — root cause | **After** | The **detective** (the name is the hint) |
+| **Security Hub** | *"**What's our overall state?**"* — everything in one view | **Always** | The **control room** with every screen on one wall |
+
+```
+   BEFORE                DURING                 AFTER
+   ──────                ──────                 ─────
+   INSPECTOR      →     GUARDDUTY        →     DETECTIVE
+   find the weak        spot the active        work out what
+   spots first          attack                 actually happened
+        └──────────────────┴─────────────────────┘
+                           │
+                     SECURITY HUB
+              all findings, one view, one format
+```
+
+💡 **A memory hook:** *Inspector inspects (your stuff, for weaknesses). GuardDuty guards (on
+duty, watching). Detective detects (investigates, after the fact). Security Hub is the hub
+(everything in one place).*
+
+### 🧒 ELI5 — protecting your house
+
+- **Inspector** is the person who **walks around your house before you go on holiday** and
+  says *"that back window doesn't lock properly, and the fence has a gap."* Nothing bad has
+  happened — these are the ways something bad *could*.
+- **GuardDuty** is the **burglar alarm**. It's watching all the time, and it knows the
+  difference between the cat and a stranger — partly because it has a **list of known
+  burglars** (malicious IPs) and partly because it **learned what a normal night sounds like**
+  (anomaly detection and ML).
+- **Detective** is the **detective who arrives afterwards**. Which window did they come
+  through? What did they touch? Who else was in the house that evening? They build a
+  **timeline** out of everything that happened.
+- **Security Hub** is the **one wall of screens in the control room** showing the inspection
+  report, the alarm status, and the detective's notes together — instead of you checking
+  three different apps and hoping you noticed everything.
+
+🛡️ **In practice, the mapping to what you already do:** GuardDuty findings are **alerts** —
+the thing that lands in your queue. Detective is the **pivoting and timelining** phase of
+triage. Security Hub is **aggregation across tools** — the same job a SIEM does, and the same
+reason it exists: findings scattered across five consoles are findings nobody reads. Inspector
+is vulnerability management, which is usually a different team's queue entirely.
+
+---
+
+## 9. The four security jobs, side by side
+
+Everything in this module maps to one of the three (really four) AWS security control goals:
+
+| Goal | Services | The question |
+|---|---|---|
+| **PREVENT** | **IAM** (users, groups, roles, policies) · **IAM Identity Center** · **Secrets Manager** · **Systems Manager** · **MFA** | *"Who can do what, and how do we keep that minimal?"* |
+| **PROTECT (network/app)** | **Security groups** · **network ACLs** · **ELB** · **AWS Shield** · **AWS WAF** | *"How do we keep bad traffic away from our applications?"* |
+| **PROTECT (data)** | **KMS** · **Macie** · **ACM** · built-in encryption in **S3 / EBS / DynamoDB** | *"If someone reaches the data, can they read it?"* |
+| **DETECT & RESPOND** | **Inspector** · **GuardDuty** · **Detective** · **Security Hub** | *"How do we know something's wrong, and what do we do?"* |
+
+### Keyword → service
+
+| If the question says… | Answer |
+|---|---|
+| "who can access what", "permissions", "least privilege" | **IAM** |
+| "temporary access", "an EC2 instance needs to reach S3", "cross-account", "no long-term credentials" | **IAM role** |
+| "single sign-on", "federated identity", "one login across accounts" | **IAM Identity Center** |
+| "rotate database credentials / API keys" | **Secrets Manager** |
+| "patch fleets of servers", "centralized node inventory", "hybrid and multi-cloud" | **Systems Manager** |
+| "**DDoS** protection" | **AWS Shield** (Standard = free/automatic; Advanced = paid) |
+| "web application firewall", "SQL injection", "block malicious requests", "web ACL" | **AWS WAF** |
+| "create and manage **encryption keys**" | **AWS KMS** |
+| "discover **sensitive data / PII** in S3" | **Amazon Macie** |
+| "manage **SSL/TLS certificates**" | **AWS Certificate Manager** |
+| "scan for **vulnerabilities** / unpatched software" | **Amazon Inspector** |
+| "**threat detection**", "malicious IPs", "unusual API activity" | **Amazon GuardDuty** |
+| "**investigate** the root cause", "timeline of what happened" | **Amazon Detective** |
+| "**one view** of all security findings", "compliance state" | **AWS Security Hub** |
+
+---
+
+## 10. Quick recap + common exam traps
+
+### Recap
+
+- **Authentication = who you are. Authorization = what you may do.**
+- **Shared Responsibility Model:** customers secure **IN** the cloud (data, applications,
+  access, OS on EC2); AWS secures **OF** the cloud (foundational software, virtualization,
+  hardware, Regions/AZs/edge locations). **The line moves depending on how managed the
+  service is — but your data is always yours.**
+- **IAM defaults to deny.** Grant explicitly, and follow **least privilege**. An **explicit
+  deny always wins**.
+- **Root user:** can do anything — secure it with a **strong password and MFA**, and use IAM
+  identities for daily tasks.
+- **Users** = permanent identities. **Groups** = bundles of users that inherit permissions.
+  **Roles** = **temporary** permissions you **assume**, abandoning your previous ones.
+  **Policies** = **JSON documents** that allow or deny.
+- **Roles exist to eliminate long-lived credentials.** They have a **trust policy** (who may
+  assume) and a **permissions policy** (what they can then do); **STS** issues the temporary
+  credentials.
+- **IAM Identity Center** = SSO and **federated identity**. **Secrets Manager** = store and
+  **rotate** secrets. **Systems Manager** = centralized node management and patching.
+- **DoS** = one flood; **DDoS** = many "zombie bots." **Shield Standard** is free and
+  automatic; **Shield Advanced** is paid with diagnostics. **WAF** filters requests via a
+  **web ACL**.
+- **Encryption at rest** (idle data) and **in transit** (moving data, via **SSL/TLS**).
+  **KMS** manages keys; **Macie** finds sensitive data in S3; **ACM** manages certificates.
+- **Inspector** (find weaknesses) → **GuardDuty** (detect active threats) → **Detective**
+  (investigate root cause), all aggregated in **Security Hub**.
+
+### Traps
+
+| Trap | The truth |
+|---|---|
+| "Authentication and authorization are the same thing" | **Identity** vs. **permissions**. You're authenticated first, authorized second |
+| "AWS secures my data" | AWS secures the **infrastructure**. **Your data, access control, and configuration are yours** — at every service level |
+| "The shared responsibility split is fixed" | It **shifts by service.** On EC2 you patch the OS; on RDS AWS does; on Lambda there's no OS to think about |
+| "IAM permissions are allowed unless denied" | **The opposite** — everything is **implicitly denied** until explicitly allowed |
+| "An explicit Allow can override a Deny" | **Never.** An **explicit deny always wins** |
+| "Use the root user for admin work" | Root is for the handful of tasks that require it. **MFA it and lock it away**; use IAM identities daily |
+| "A role is just another kind of user" | A user is a **permanent identity**; a role is **temporary permissions anyone authorized can assume**. Assuming a role **replaces** your permissions, it doesn't add to them |
+| "Put an access key on the EC2 instance so the app can reach S3" | **Attach a role.** No key on disk, credentials auto-expire and auto-rotate. This is the single biggest practical point in the module |
+| "The role's permissions policy controls who can use it" | That's the **trust policy**. Permissions policy = what the wearer can do |
+| "Groups can have roles / roles contain users" | **Groups contain users.** Roles contain **permissions** and are **assumed** |
+| "IAM is a regional service" | **IAM is global** |
+| "Shield Advanced is on by default" | **Standard** is free and automatic for everyone; **Advanced** is paid and opt-in |
+| "A web ACL and a network ACL are the same" | **Web ACL** = AWS WAF, filters **HTTP requests**. **Network ACL** = VPC, filters **packets at the subnet boundary** |
+| "WAF only blocks IP addresses" | The courseware simplifies. Real WAF also inspects request **content** — SQL injection, XSS, rate limits, geo |
+| "Encryption at rest also protects data on the network" | Two separate problems, two separate controls. You need **both** |
+| "Macie encrypts your data" | Macie **discovers and classifies sensitive data** in S3. **KMS** handles keys; encryption is done by the services |
+| "GuardDuty scans for vulnerabilities" | GuardDuty detects **active threats**. **Inspector** scans for **vulnerabilities** |
+| "Detective detects threats" | Despite the name, Detective **investigates** threats **after** GuardDuty (or another service) detects them |
